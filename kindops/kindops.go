@@ -3,8 +3,14 @@ package kindops
 import (
 	"fmt"
 
-	kindcluster ""
+	kindCL "sigs.k8s.io/kind/pkg/cluster"
 )
+
+func CreateCluster(kubeconfigpath string) kindCL.CreateOption {
+	options := kindCL.CreateWithKubeconfigPath(kubeconfigpath)
+	fmt.Println(options)
+	return options
+}
 
 // MapHandler will return an http.HandlerFunc (which also
 // implements http.Handler) that will attempt to map any
@@ -12,6 +18,8 @@ import (
 // that each key in the map points to, in string format).
 // If the path is not provided in the map, then the fallback
 // http.Handler will be called instead.
+
+/*
 func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path, ok := pathsToUrls[r.URL.Path]
@@ -31,8 +39,8 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 //
 // YAML is expected to be in the format:
 //
-//     - path: /some-path
-//       url: https://www.some-url.com/demo
+//   - path: /some-path
+//     url: https://www.some-url.com/demo
 //
 // The only errors that can be returned all related to having
 // invalid YAML data.
@@ -61,3 +69,5 @@ func buildMap(parsedYaml []map[string]string) map[string]string {
 	}
 	return mergedMap
 }
+
+*/
