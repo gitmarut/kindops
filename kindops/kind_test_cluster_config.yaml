@@ -1,0 +1,10 @@
+name: "cluster108"
+# empty config means default is taken
+config: ""
+imageName: "kindest/node:v1.27.3"
+retain: true
+waitTime: 60
+kubeConfig: "./cluster108.yaml"
+# LB IP range to be used for metalLB installationo. From Docker IP space
+# This is cab seen using "docker network inspect -f '{{.IPAM.Config}}' kind"
+lbIpRange: "172.16.64.1-172.16.64.250"

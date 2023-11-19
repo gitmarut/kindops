@@ -2,72 +2,95 @@ package kindops
 
 import (
 	"fmt"
+	"os"
+	"time"
 
-	kindCL "sigs.k8s.io/kind/pkg/cluster"
+	"gopkg.in/yaml.v2"
+	"sigs.k8s.io/kind/pkg/cluster"
+
+	"sigs.k8s.io/kind/pkg/log"
 )
 
-func CreateCluster(kubeconfigpath string) kindCL.CreateOption {
-	options := kindCL.CreateWithKubeconfigPath(kubeconfigpath)
-	fmt.Println(options)
-	return options
-}
+/* There are two config files used. One is default now. Which is mentioned as flagpole.Config
+   This might need tweaking later for different options
+   "https://github.com/kubernetes-sigs/kind/blob/main/pkg/apis/config/v1alpha4/default.go"
 
-// MapHandler will return an http.HandlerFunc (which also
-// implements http.Handler) that will attempt to map any
-// paths (keys in the map) to their corresponding URL (values
-// that each key in the map points to, in string format).
-// If the path is not provided in the map, then the fallback
-// http.Handler will be called instead.
-
-/*
-func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		path, ok := pathsToUrls[r.URL.Path]
-		if ok {
-			http.Redirect(w, r, path, http.StatusFound)
-		} else {
-			fallback.ServeHTTP(w, r)
-		}
-	}
-}
-
-// YAMLHandler will parse the provided YAML and then return
-// an http.HandlerFunc (which also implements http.Handler)
-// that will attempt to map any paths to their corresponding
-// URL. If the path is not provided in the YAML, then the
-// fallback http.Handler will be called instead.
-//
-// YAML is expected to be in the format:
-//
-//   - path: /some-path
-//     url: https://www.some-url.com/demo
-//
-// The only errors that can be returned all related to having
-// invalid YAML data.
-//
-// See MapHandler to create a similar http.HandlerFunc via
-// a mapping of paths to urls.
-func YAMLHandler(yaml []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	parsedYaml, err := parseYAML(yaml)
-	if err != nil {
-		return nil, err
-	}
-	pathMap := buildMap(parsedYaml)
-	return MapHandler(pathMap, fallback), nil
-}
-
-func parseYAML(yaml []byte) (dst []map[string]string, err error) {
-	err = yamlV2.Unmarshal(yaml, &dst)
-	return dst, err
-}
-
-func buildMap(parsedYaml []map[string]string) map[string]string {
-	mergedMap := make(map[string]string)
-	for _, entry := range parsedYaml {
-		key := entry["path"]
-		mergedMap[key] = entry["url"]
-	}
-	return mergedMap
-}
-
+   The other one is read as flagpole itself.
 */
+
+type flagpole struct {
+	Name       string        `yaml:"name"`
+	Config     string        `yaml:"config"`
+	ImageName  string        `yaml:"imageName"`
+	Retain     bool          `yaml:"retain"`
+	Wait       time.Duration `yaml:"waitTime"`
+	Kubeconfig string        `yaml:"kubeConfig"`
+}
+
+func (c *flagpole) getConf(configfile string, logger log.Logger) *flagpole {
+
+	dat, err := os.ReadFile(configfile)
+	check(err, logger)
+
+	err = yaml.Unmarshal(dat, c)
+	check(err, logger)
+
+	if err != nil {
+		logger.Errorf("Unmarshal: %v", err)
+	}
+
+	return c
+}
+
+func check(e error, logger log.Logger) {
+	if e != nil {
+		logger.Error(e.Error())
+		panic(e)
+	}
+}
+
+func CreateCluster(configfile string, logger log.Logger) error {
+
+	var c flagpole
+	c.getConf(configfile, logger)
+
+	fmt.Printf("%+v\n", c)
+	fmt.Printf("%+v\n", c.Name)
+
+	logger.V(0).Infof("Creating cluster %q ...\n", c.Name)
+
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+	)
+
+	err := provider.Create(c.Name, cluster.CreateWithConfigFile(c.Config),
+		cluster.CreateWithNodeImage(c.ImageName),
+		cluster.CreateWithRetain(c.Retain),
+		cluster.CreateWithWaitForReady(c.Wait*time.Second),
+		cluster.CreateWithKubeconfigPath(c.Kubeconfig),
+		cluster.CreateWithDisplayUsage(true),
+		cluster.CreateWithDisplaySalutation(true),
+	)
+	check(err, logger)
+
+	return (err)
+
+}
+
+func DeleteCluster(configfile string, logger log.Logger) error {
+
+	var c flagpole
+	c.getConf(configfile, logger)
+
+	provider := cluster.NewProvider(
+		//cluster.ProviderWithLogger(logger),
+		cluster.ProviderWithLogger(logger),
+	)
+
+	err := provider.Delete(c.Name, c.Kubeconfig)
+
+	check(err, logger)
+
+	return (err)
+
+}
