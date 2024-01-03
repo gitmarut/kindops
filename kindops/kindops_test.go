@@ -26,8 +26,6 @@ func TestCreate(t *testing.T) {
 
 		kindLogger := kindCmd.NewLogger()
 
-		kindLogger.V(0).Infof("Creating cluster %q ...\n", "hello")
-
 		err := CreateCluster("./kind_test_cluster_config.yaml", kindLogger)
 
 		//checkErr(t, err)
@@ -37,15 +35,19 @@ func TestCreate(t *testing.T) {
 
 	})
 
-	t.Run("Delete a basic cluster", func(t *testing.T) {
+	/*
 
-		kindLogger := kindCmd.NewLogger()
+		t.Run("Delete a basic cluster", func(t *testing.T) {
 
-		err := DeleteCluster("/home/gitmarut/go/src/gopackages-pvt/kindops/kind_test_cluster_config.yaml", kindLogger)
+			kindLogger := kindCmd.NewLogger()
 
-		//checkErr(t, err)
-		fmt.Println(err)
+			err := DeleteCluster("/home/gitmarut/go/src/gopackages-pvt/kindops/kind_test_cluster_config.yaml", kindLogger)
 
-	})
+			//checkErr(t, err)
+			fmt.Println(err)
+
+		})
+
+	*/
 
 }

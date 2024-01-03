@@ -5,6 +5,9 @@ imageName: "kindest/node:v1.27.3"
 retain: true
 waitTime: 60
 kubeConfig: "./cluster108.yaml"
+metalLbChartPath: "https://github.com/metallb/metallb/releases/download/metallb-chart-0.13.12/metallb-0.13.12.tgz"
+metalLbReleaseName: "my-metallb"
+metalLbReleaseNamespace: "default"
 # LB IP range to be used for metalLB installationo. From Docker IP space
 # This is cab seen using "docker network inspect -f '{{.IPAM.Config}}' kind"
-lbIpRange: "172.16.64.1-172.16.64.250"
+metalLbIpRange: "172.18.64.1-172.18.64.250"
