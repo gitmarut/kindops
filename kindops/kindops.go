@@ -1,9 +1,11 @@
 package kindops
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"time"
@@ -15,13 +17,19 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/kube"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+
+	serialize "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/log"
@@ -105,6 +113,10 @@ func CreateCluster(configfile string, logger log.Logger) error {
 	check("Get Kind Cluster's Dynamic & Typed Clients - ", err, logger)
 
 	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
+	check("Install MetalLB CRs - ", err, logger)
+
+	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", logger)
+	check("Install a sample Wordpress App - ", err, logger)
 
 	if err == nil {
 		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
@@ -299,5 +311,59 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 		panic(err.Error())
 	}
 	return (err)
+
+}
+
+// Thanks to https://gist.github.com/pytimer/0ad436972a073bb37b8b6b8b474520fc
+func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.Clientset, yamlfile string, namespace string, logger log.Logger) error {
+
+	yml, err := os.ReadFile(yamlfile)
+	check("Read the YAML file - ", err, logger)
+
+	logger.V(0).Infof(string(yml))
+
+	decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(yml), 100)
+
+	for {
+		var rawObj runtime.RawExtension
+		if err = decoder.Decode(&rawObj); err != nil {
+			break
+		}
+
+		obj, gvk, _ := serialize.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
+
+		unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+		fmt.Println(unstructuredMap["kind"], unstructuredMap["metadata"])
+		check("Convert to Unstructured Map - ", err, logger)
+
+		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
+
+		gr, err := restmapper.GetAPIGroupResources(kubetclient.Discovery())
+		check("Get API group from each object - ", err, logger)
+
+		mapper := restmapper.NewDiscoveryRESTMapper(gr)
+		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		check("Map GVK in each object - ", err, logger)
+
+		var dri dynamic.ResourceInterface
+		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+			if unstructuredObj.GetNamespace() == "" {
+				unstructuredObj.SetNamespace(namespace)
+			}
+			dri = kubedclient.Resource(mapping.Resource).Namespace(unstructuredObj.GetNamespace())
+		} else {
+			dri = kubedclient.Resource(mapping.Resource)
+		}
+
+		_, err = dri.Create(context.Background(), unstructuredObj, metav1.CreateOptions{})
+		check("Create object - ", err, logger)
+	}
+	if err != io.EOF {
+		return (err)
+	} else {
+		err := error(nil)
+		return (err)
+
+	}
 
 }
