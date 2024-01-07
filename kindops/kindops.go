@@ -109,7 +109,7 @@ func CreateCluster(configfile string, logger log.Logger) error {
 	err = InstallHelmChart(c.Kubeconfig, c.Metallbchartpath, c.Metallbreleasename, c.Metallbreleasenamespace, logger)
 	check("Installation of MetalLB Helm Chart - ", err, logger)
 
-	dclient, tclient, err := GetDynamicKubeClient(c.Kubeconfig, logger)
+	dclient, tclient, err := GetKubeClient(c.Kubeconfig, logger)
 	check("Get Kind Cluster's Dynamic & Typed Clients - ", err, logger)
 
 	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
@@ -117,6 +117,10 @@ func CreateCluster(configfile string, logger log.Logger) error {
 
 	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", logger)
 	check("Install a sample Wordpress App - ", err, logger)
+
+	wplabel := "app=wordpress"
+	err = CheckPodsUp(tclient, wplabel, "default", logger)
+	check("Checking Wordpress pods are up completely - ", err, logger)
 
 	if err == nil {
 		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
@@ -166,7 +170,7 @@ func InstallHelmChart(kubeconfigPath string, chartPath string, releaseName strin
 
 }
 
-func GetDynamicKubeClient(kubeconfigPath string, logger log.Logger) (*dynamic.DynamicClient, *kubernetes.Clientset, error) {
+func GetKubeClient(kubeconfigPath string, logger log.Logger) (*dynamic.DynamicClient, *kubernetes.Clientset, error) {
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	check("Build Kube Config - ", err, logger)
@@ -215,42 +219,15 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 
 	// Check MetalLB pods are up before creating IPpoolList and L2Ad
 
-	listOptions := metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/name=metallb",
-	}
+	metalLbLabel := "app.kubernetes.io/name=metallb"
 
-	logger.V(0).Infof("Checking MetalLB pods are up completely in namespace - %q, may take up to 120 seconds", metallbreleasenamespace)
+	err := CheckPodsUp(kubetclient, metalLbLabel, "default", logger)
 
-	for checkCount := 0; checkCount < 12; checkCount++ {
-		pods, _ := kubetclient.CoreV1().Pods(metallbreleasenamespace).List(context.Background(), listOptions)
-
-		time.Sleep(time.Second * 10)
-
-		podUpCount := 0
-
-		for _, pod := range pods.Items {
-			podready := podutil.IsPodReady(&pod)
-			if podready {
-				podUpCount++
-			}
-		}
-
-		if podUpCount == 2 {
-			err := error(nil)
-			check("Check MetalLB pods are fully up - ", err, logger)
-			break
-		}
-
-		if checkCount == 11 {
-			err := errors.New("MetalLB pods are not up after 120 seconds")
-			check("Check MetalLB pods are fully up - ", err, logger)
-		}
-
-	}
+	check("Checking MetalLB pods are up completely in namespace", err, logger)
 
 	logger.V(0).Infof("Checking MetalLB CRDs ar available")
 
-	_, err := kubedclient.
+	_, err = kubedclient.
 		Resource((res1)).
 		Namespace(metallbreleasenamespace).
 		List(context.Background(), metav1.ListOptions{})
@@ -320,7 +297,7 @@ func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.C
 	yml, err := os.ReadFile(yamlfile)
 	check("Read the YAML file - ", err, logger)
 
-	logger.V(0).Infof(string(yml))
+	//logger.V(0).Infof(string(yml))
 
 	decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(yml), 100)
 
@@ -365,5 +342,51 @@ func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.C
 		return (err)
 
 	}
+
+}
+
+func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namespace string, logger log.Logger) error {
+	listOptions := metav1.ListOptions{
+		LabelSelector: labelselector,
+	}
+
+	logger.V(0).Infof("Checking %q pods are up completely in namespace - %q, will wait for 120 seconds", labelselector, namespace)
+
+	err := error(nil)
+
+	for checkCount := 0; checkCount < 12; checkCount++ {
+		time.Sleep(time.Second * 10)
+		pods, err := kubetclient.CoreV1().Pods(namespace).List(context.Background(), listOptions)
+
+		if err != nil {
+			logger.V(0).Infof(err.Error() + " ,sleep 10s again")
+		} else {
+			podUpCount := 0
+
+			for _, pod := range pods.Items {
+				podready := podutil.IsPodReady(&pod)
+				if podready {
+					podUpCount++
+				}
+			}
+
+			podUpNeeded := len(pods.Items)
+
+			if podUpCount == podUpNeeded {
+				err := error(nil)
+				check("Check pods are fully up - ", err, logger)
+				break
+			}
+
+			if checkCount == 11 {
+				err = errors.New(labelselector + " pods are not up after 120 seconds in namespace " + namespace)
+				check("Check Pods are fully up - ", err, logger)
+			}
+
+		}
+
+	}
+
+	return (err)
 
 }
