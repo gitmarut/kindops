@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -121,6 +123,14 @@ func CreateCluster(configfile string, logger log.Logger) error {
 	wplabel := "app=wordpress"
 	err = CheckPodsUp(tclient, wplabel, "default", logger)
 	check("Checking Wordpress pods are up completely - ", err, logger)
+
+	svcip, err := GetSvcIp(tclient, wplabel, "wordpress", "default", logger)
+	check("Getting Wordpress svcIP - ", err, logger)
+
+	urladdress := "http://" + svcip + "/wp-admin/install.php"
+
+	err = sendHttpReq(urladdress, logger)
+	check("Check traffic can be sent/received on a LB address in Kind cluster -", err, logger)
 
 	if err == nil {
 		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
@@ -389,4 +399,63 @@ func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namesp
 
 	return (err)
 
+}
+
+func GetSvcIp(kubetclient *kubernetes.Clientset, labelselector string, svcname string, namespace string, logger log.Logger) (string, error) {
+	listOptions := metav1.ListOptions{
+		LabelSelector: labelselector,
+	}
+
+	svcs, err := kubetclient.CoreV1().Services(namespace).List(context.Background(), listOptions)
+	check("Check service objects can be listed - ", err, logger)
+
+	lbIP := ""
+	err = error(nil)
+
+	for _, svc := range svcs.Items {
+		if svc.ObjectMeta.Name == svcname {
+			if svc.Spec.Type == "LoadBalancer" {
+				lbIP = svc.Status.LoadBalancer.Ingress[0].IP
+				//fmt.Println("var1 = ", reflect.TypeOf(svc.Status.LoadBalancer.Ingress[0].IP))
+				break
+			} else {
+				lbIP = "notLB"
+				err = errors.New(labelselector + " svc " + svcname + " is not LoadBalancer in namespace " + namespace)
+			}
+		}
+
+	}
+
+	if lbIP == "" {
+		err = errors.New(labelselector + " svc " + svcname + " is not found in namespace " + namespace)
+	}
+
+	return lbIP, err
+
+}
+
+func sendHttpReq(address string, logger log.Logger) error {
+
+	for x := 0; x < 10; x++ {
+		time.Sleep(time.Second * 3)
+		fmt.Println(address)
+		resp, err := http.Get(address)
+		fmt.Println(resp.StatusCode)
+
+		if err == nil {
+			if resp.StatusCode == 200 {
+				body, _ := io.ReadAll(resp.Body)
+				stringbody := string(body)
+				if strings.Contains(stringbody, "Cebuano") {
+					err := error(nil)
+					logger.V(0).Infof("Wordpress website respeonds fine.")
+					return (err)
+				}
+			}
+		}
+
+	}
+
+	err := errors.New("wordpress website is not responding on loadbalance service")
+	return (err)
 }

@@ -31,7 +31,7 @@ func TestCreate(t *testing.T) {
 		//checkErr(t, err)
 		fmt.Println(err)
 
-		time.Sleep(time.Second * 60)
+		time.Sleep(time.Second * 30)
 
 	})
 
