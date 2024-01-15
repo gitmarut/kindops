@@ -360,11 +360,11 @@ func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namesp
 		LabelSelector: labelselector,
 	}
 
-	logger.V(0).Infof("Checking %q pods are up completely in namespace - %q, will wait for 120 seconds", labelselector, namespace)
+	logger.V(0).Infof("Checking %q pods are up completely in namespace - %q, will wait for 150 seconds", labelselector, namespace)
 
 	err := error(nil)
 
-	for checkCount := 0; checkCount < 12; checkCount++ {
+	for checkCount := 0; checkCount < 15; checkCount++ {
 		time.Sleep(time.Second * 10)
 		pods, err := kubetclient.CoreV1().Pods(namespace).List(context.Background(), listOptions)
 
@@ -388,8 +388,8 @@ func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namesp
 				break
 			}
 
-			if checkCount == 11 {
-				err = errors.New(labelselector + " pods are not up after 120 seconds in namespace " + namespace)
+			if checkCount == 14 {
+				err = errors.New(labelselector + " pods are not up after 150 seconds in namespace " + namespace)
 				check("Check Pods are fully up - ", err, logger)
 			}
 
