@@ -13,7 +13,7 @@ func TestCreate(t *testing.T) {
 
 	t.Run("Create a test kind cluster", func(t *testing.T) {
 
-		err := CreateCluster("./../config/kind_test_cluster_config.yaml", kindLogger)
+		err := CreateCluster("./../../config/kind_test_cluster_config.yaml", kindLogger)
 
 		check("Create a test kind cluster - ", err, kindLogger)
 
@@ -24,7 +24,7 @@ func TestCreate(t *testing.T) {
 	t.Run("Test a wordpress app can be installed and test traffic to it thru a LB", func(t *testing.T) {
 
 		var c flagpole
-		c.getConf("./../config/kind_test_cluster_config.yaml", kindLogger)
+		c.getConf("./../../config/kind_test_cluster_config.yaml", kindLogger)
 
 		dclient, tclient, err := GetKubeClient(c.Kubeconfig, kindLogger)
 		check("Get Kind Cluster's Dynamic & Typed Clients - ", err, kindLogger)
@@ -60,7 +60,7 @@ func TestCreate(t *testing.T) {
 
 			kindLogger := kindCmd.NewLogger()
 
-			err := DeleteCluster("/home/gitmarut/go/src/gopackages-pvt/kindops/kind_test_cluster_config.yaml", kindLogger)
+			err := DeleteCluster("./../../kind_test_cluster_config.yaml", kindLogger)
 			check("Delete a test kind cluster - ", err, kindLogger)
 
 
