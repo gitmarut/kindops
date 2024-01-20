@@ -117,7 +117,7 @@ func CreateCluster(configfile string, logger log.Logger) error {
 	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
 	check("Install MetalLB CRs - ", err, logger)
 
-	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", logger)
+	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", "create", logger)
 	check("Install a sample Wordpress App - ", err, logger)
 
 	wplabel := "app=wordpress"
@@ -131,6 +131,10 @@ func CreateCluster(configfile string, logger log.Logger) error {
 
 	err = sendHttpReq(urladdress, logger)
 	check("Check traffic can be sent/received on a LB address in Kind cluster -", err, logger)
+
+	time.Sleep(time.Second * 10)
+	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", "delete", logger)
+	check("Delete the sample Wordpress App - ", err, logger)
 
 	if err == nil {
 		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
@@ -302,7 +306,7 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 }
 
 // Thanks to https://gist.github.com/pytimer/0ad436972a073bb37b8b6b8b474520fc
-func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.Clientset, yamlfile string, namespace string, logger log.Logger) error {
+func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.Clientset, yamlfile string, namespace string, optype string, logger log.Logger) error {
 
 	yml, err := os.ReadFile(yamlfile)
 	check("Read the YAML file - ", err, logger)
@@ -320,7 +324,7 @@ func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.C
 		obj, gvk, _ := serialize.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
 
 		unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-		fmt.Println(unstructuredMap["kind"], unstructuredMap["metadata"])
+		fmt.Println(unstructuredMap["kind"], (unstructuredMap["metadata"].(map[string]interface{})["name"]))
 		check("Convert to Unstructured Map - ", err, logger)
 
 		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
@@ -342,8 +346,14 @@ func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.C
 			dri = kubedclient.Resource(mapping.Resource)
 		}
 
-		_, err = dri.Create(context.Background(), unstructuredObj, metav1.CreateOptions{})
-		check("Create object - ", err, logger)
+		if optype == "create" {
+			_, err = dri.Create(context.Background(), unstructuredObj, metav1.CreateOptions{})
+			check("Create object - ", err, logger)
+		}
+		if optype == "delete" {
+			err = dri.Delete(context.Background(), unstructuredMap["metadata"].(map[string]interface{})["name"].(string), metav1.DeleteOptions{})
+			check("Delete object - ", err, logger)
+		}
 	}
 	if err != io.EOF {
 		return (err)
