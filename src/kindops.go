@@ -439,29 +439,6 @@ func CreateCluster(configfile string, logger log.Logger) error {
 	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
 	check("Install MetalLB CRs - ", err, logger)
 
-	// install wordpress sample apps
-	err = ApplyYAMLfile(dclient, tclient, c.Wordpresspath, "default", "create", logger)
-	check("Install a sample Wordpress App - ", err, logger)
-
-	// check wordpress pods are up and running
-	wplabel := "app=wordpress"
-	err = CheckPodsUp(tclient, wplabel, "default", logger)
-	check("Checking Wordpress pods are up completely - ", err, logger)
-
-	// get wordpress service IP
-	svcip, err := GetSvcIp(tclient, wplabel, "wordpress", "default", logger)
-	check("Getting Wordpress svcIP - ", err, logger)
-
-	// check wordpress service responds on LB address
-	urladdress := "http://" + svcip + "/wp-admin/install.php"
-	err = sendHttpReq(urladdress, logger)
-	check("Check traffic can be sent/received on a LB address in Kind cluster -", err, logger)
-
-	// delete sample wordpress app
-	time.Sleep(time.Second * 10)
-	err = ApplyYAMLfile(dclient, tclient, c.Wordpresspath, "default", "delete", logger)
-	check("Delete the sample Wordpress App - ", err, logger)
-
 	if err == nil {
 		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
 	}
