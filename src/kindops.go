@@ -35,17 +35,18 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/log"
-	//metallbv1 "go.universe.tf/metallb/api/v1beta1"
-	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-/* There are two config files used. One is default now. Which is mentioned as flagpole.Config
-   This might need tweaking later for different options
+/* There are two config files needed in dep directory -
+   kind_test_cluster_config.yaml & undefined. First one get converted to
+   struct flagpole. Undefined config file controls more kind parameters like
+   number of kubernetes nodes, their resources config etc & this is defined as
+   flagpole.Config which is empty now. This might need tweaking later for
+   different options
    "https://github.com/kubernetes-sigs/kind/blob/main/pkg/apis/config/v1alpha4/default.go"
-
-   The other one is read as flagpole itself.
 */
 
+// flagpole is the struct to keep all the options for creating kind cluster
 type flagpole struct {
 	Name                    string        `yaml:"name"`
 	Config                  string        `yaml:"config"`
@@ -57,13 +58,10 @@ type flagpole struct {
 	Metallbreleasename      string        `yaml:"metalLbReleaseName"`
 	Metallbreleasenamespace string        `yaml:"metalLbReleaseNamespace"`
 	Metallbiprange          string        `yaml:"metalLbIpRange"`
+	Wordpresspath           string        `yaml:"wordpressPath"`
 }
 
-// quick and dirty Helm install. Need to improve
-// Also need to move metalLB related stuff to another package
-
-//func InstallMetalLbIpv4Pool()
-
+// getConf will read yaml config file and return flagPole
 func (c *flagpole) getConf(configfile string, logger log.Logger) *flagpole {
 
 	dat, err := os.ReadFile(configfile)
@@ -75,6 +73,7 @@ func (c *flagpole) getConf(configfile string, logger log.Logger) *flagpole {
 	return c
 }
 
+// check is an internal function to log an error
 func check(condition string, e error, logger log.Logger) {
 	if e != nil {
 		logger.Error(condition + e.Error())
@@ -84,83 +83,7 @@ func check(condition string, e error, logger log.Logger) {
 	}
 }
 
-func CreateCluster(configfile string, logger log.Logger) error {
-
-	var c flagpole
-	c.getConf(configfile, logger)
-
-	fmt.Printf("%+v\n", c)
-
-	logger.V(0).Infof("Creating cluster %q ...\n", c.Name)
-
-	provider := cluster.NewProvider(
-		cluster.ProviderWithLogger(logger),
-	)
-
-	err := provider.Create(c.Name, cluster.CreateWithConfigFile(c.Config),
-		cluster.CreateWithNodeImage(c.ImageName),
-		cluster.CreateWithRetain(c.Retain),
-		cluster.CreateWithWaitForReady(c.Wait*time.Second),
-		cluster.CreateWithKubeconfigPath(c.Kubeconfig),
-		cluster.CreateWithDisplayUsage(true),
-		cluster.CreateWithDisplaySalutation(true),
-	)
-	check("Kind Cluster Create - ", err, logger)
-
-	// install metalLB from Helm
-	err = InstallHelmChart(c.Kubeconfig, c.Metallbchartpath, c.Metallbreleasename, c.Metallbreleasenamespace, logger)
-	check("Installation of MetalLB Helm Chart - ", err, logger)
-
-	dclient, tclient, err := GetKubeClient(c.Kubeconfig, logger)
-	check("Get Kind Cluster's Dynamic & Typed Clients - ", err, logger)
-
-	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
-	check("Install MetalLB CRs - ", err, logger)
-
-	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", "create", logger)
-	check("Install a sample Wordpress App - ", err, logger)
-
-	wplabel := "app=wordpress"
-	err = CheckPodsUp(tclient, wplabel, "default", logger)
-	check("Checking Wordpress pods are up completely - ", err, logger)
-
-	svcip, err := GetSvcIp(tclient, wplabel, "wordpress", "default", logger)
-	check("Getting Wordpress svcIP - ", err, logger)
-
-	urladdress := "http://" + svcip + "/wp-admin/install.php"
-
-	err = sendHttpReq(urladdress, logger)
-	check("Check traffic can be sent/received on a LB address in Kind cluster -", err, logger)
-
-	time.Sleep(time.Second * 10)
-	err = ApplyYAMLfile(dclient, tclient, "wp-all.yaml", "default", "delete", logger)
-	check("Delete the sample Wordpress App - ", err, logger)
-
-	if err == nil {
-		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
-	}
-	return (err)
-
-}
-
-func DeleteCluster(configfile string, logger log.Logger) error {
-
-	var c flagpole
-	c.getConf(configfile, logger)
-
-	provider := cluster.NewProvider(
-		//cluster.ProviderWithLogger(logger),
-		cluster.ProviderWithLogger(logger),
-	)
-
-	err := provider.Delete(c.Name, c.Kubeconfig)
-
-	check("Kind Cluster Delete - ", err, logger)
-
-	return (err)
-
-}
-
+// InstallHelmChart is a quick and dirty Helm install. Need to improve
 func InstallHelmChart(kubeconfigPath string, chartPath string, releaseName string, releaseNamespace string, logger log.Logger) error {
 
 	actionConfig := new(action.Configuration)
@@ -184,6 +107,7 @@ func InstallHelmChart(kubeconfigPath string, chartPath string, releaseName strin
 
 }
 
+// GetKubeClient will get typed and dynamic k8s client for client-go
 func GetKubeClient(kubeconfigPath string, logger log.Logger) (*dynamic.DynamicClient, *kubernetes.Clientset, error) {
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -199,6 +123,8 @@ func GetKubeClient(kubeconfigPath string, logger log.Logger) (*dynamic.DynamicCl
 
 }
 
+// InstallMetalLbResources will install MetalLB CRs. Need to move metalLB
+// related stuff to another package
 func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.Clientset, metallbiprange string, metallbreleasenamespace string, logger log.Logger) error {
 
 	res1 := schema.GroupVersionResource{Group: "metallb.io", Version: "v1beta1", Resource: "ipaddresspools"}
@@ -231,7 +157,7 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 		}
 	)
 
-	// Check MetalLB pods are up before creating IPpoolList and L2Ad
+	// check MetalLB pods are up before creating IPpoolList and L2Ad
 
 	metalLbLabel := "app.kubernetes.io/name=metallb"
 
@@ -268,7 +194,7 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 		Create(context.Background(), l2ObjNew1, metav1.CreateOptions{})
 	check("Install MetalLB L2 Adverrtisement - ", err, logger)
 
-	// Read
+	// check MetalLB CRs are installed.
 	read1, err := kubedclient.
 		Resource(res1).
 		Namespace(metallbreleasenamespace).
@@ -299,12 +225,16 @@ func InstallMetalLbResources(kubedclient *dynamic.DynamicClient, kubetclient *ku
 	check("Read MetalLB L2 advertisement - ", err, logger)
 
 	if read2.GetName() != created2.GetName() {
-		panic(err.Error())
+		err := errors.New("read metalLB l2ad has unexpected data")
+		check("Checking the installed L2 advertisement - ", err, logger)
+
 	}
 	return (err)
 
 }
 
+// ApplyYAMLfile installs or deletes k8s objects from a yaml
+// This can be expanded to other k8s ops as well
 // Thanks to https://gist.github.com/pytimer/0ad436972a073bb37b8b6b8b474520fc
 func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.Clientset, yamlfile string, namespace string, optype string, logger log.Logger) error {
 
@@ -365,6 +295,7 @@ func ApplyYAMLfile(kubedclient *dynamic.DynamicClient, kubetclient *kubernetes.C
 
 }
 
+// CheckPodsUp checks the pods with given labels are up or not.
 func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namespace string, logger log.Logger) error {
 	listOptions := metav1.ListOptions{
 		LabelSelector: labelselector,
@@ -402,15 +333,14 @@ func CheckPodsUp(kubetclient *kubernetes.Clientset, labelselector string, namesp
 				err = errors.New(labelselector + " pods are not up after 150 seconds in namespace " + namespace)
 				check("Check Pods are fully up - ", err, logger)
 			}
-
 		}
-
 	}
 
 	return (err)
 
 }
 
+// GetSvcIp returns the LB IP for service with given label selector
 func GetSvcIp(kubetclient *kubernetes.Clientset, labelselector string, svcname string, namespace string, logger log.Logger) (string, error) {
 	listOptions := metav1.ListOptions{
 		LabelSelector: labelselector,
@@ -444,6 +374,7 @@ func GetSvcIp(kubetclient *kubernetes.Clientset, labelselector string, svcname s
 
 }
 
+// sendHttpReq sends http requests to given URL, in this case WP
 func sendHttpReq(address string, logger log.Logger) error {
 
 	for x := 0; x < 10; x++ {
@@ -468,4 +399,94 @@ func sendHttpReq(address string, logger log.Logger) error {
 
 	err := errors.New("wordpress website is not responding on loadbalance service")
 	return (err)
+}
+
+// CreateCluster will create a kind cluster, install MetalLB using helm,
+// install a sample wordpress app, check traffic to wordpress and delete
+// wordpress.
+func CreateCluster(configfile string, logger log.Logger) error {
+
+	var c flagpole
+	c.getConf(configfile, logger)
+
+	//fmt.Printf("%+v\n", c)
+
+	logger.V(0).Infof("Creating cluster %q ...\n", c.Name)
+
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+	)
+
+	err := provider.Create(c.Name, cluster.CreateWithConfigFile(c.Config),
+		cluster.CreateWithNodeImage(c.ImageName),
+		cluster.CreateWithRetain(c.Retain),
+		cluster.CreateWithWaitForReady(c.Wait*time.Second),
+		cluster.CreateWithKubeconfigPath(c.Kubeconfig),
+		cluster.CreateWithDisplayUsage(true),
+		cluster.CreateWithDisplaySalutation(true),
+	)
+	check("Kind Cluster Creation - ", err, logger)
+
+	// install metalLB CRDs and deployments using Helm
+	err = InstallHelmChart(c.Kubeconfig, c.Metallbchartpath, c.Metallbreleasename, c.Metallbreleasenamespace, logger)
+	check("Installation of MetalLB Helm Chart - ", err, logger)
+
+	// get static and dynamic client-go clients for further use
+	dclient, tclient, err := GetKubeClient(c.Kubeconfig, logger)
+	check("Get Kind Cluster's Dynamic & Typed Clients - ", err, logger)
+
+	// install metalLb custom resources
+	err = InstallMetalLbResources(dclient, tclient, c.Metallbiprange, c.Metallbreleasenamespace, logger)
+	check("Install MetalLB CRs - ", err, logger)
+
+	// install wordpress sample apps
+	err = ApplyYAMLfile(dclient, tclient, c.Wordpresspath, "default", "create", logger)
+	check("Install a sample Wordpress App - ", err, logger)
+
+	// check wordpress pods are up and running
+	wplabel := "app=wordpress"
+	err = CheckPodsUp(tclient, wplabel, "default", logger)
+	check("Checking Wordpress pods are up completely - ", err, logger)
+
+	// get wordpress service IP
+	svcip, err := GetSvcIp(tclient, wplabel, "wordpress", "default", logger)
+	check("Getting Wordpress svcIP - ", err, logger)
+
+	// check wordpress service responds on LB address
+	urladdress := "http://" + svcip + "/wp-admin/install.php"
+	err = sendHttpReq(urladdress, logger)
+	check("Check traffic can be sent/received on a LB address in Kind cluster -", err, logger)
+
+	// delete sample wordpress app
+	time.Sleep(time.Second * 10)
+	err = ApplyYAMLfile(dclient, tclient, c.Wordpresspath, "default", "delete", logger)
+	check("Delete the sample Wordpress App - ", err, logger)
+
+	if err == nil {
+		logger.V(0).Infof("Cluster with all dependencies completed - %q", c.Name)
+	}
+	return (err)
+
+}
+
+// DeleteCluster will delete the kind cluster mentioned in configfile
+func DeleteCluster(configfile string, logger log.Logger) error {
+
+	var c flagpole
+	c.getConf(configfile, logger)
+
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+	)
+
+	err := provider.Delete(c.Name, c.Kubeconfig)
+
+	check("Kind Cluster Deletion -  ", err, logger)
+
+	if err == nil {
+		logger.V(0).Infof("Cluster deleted - %q", c.Name)
+	}
+
+	return (err)
+
 }
