@@ -375,7 +375,7 @@ func GetSvcIp(kubetclient *kubernetes.Clientset, labelselector string, svcname s
 }
 
 // sendHttpReq sends http requests to given URL, in this case WP
-func sendHttpReq(address string, logger log.Logger) error {
+func SendHttpReq(address string, logger log.Logger) error {
 
 	for x := 0; x < 10; x++ {
 		time.Sleep(time.Second * 3)

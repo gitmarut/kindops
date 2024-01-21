@@ -1,4 +1,4 @@
-module kindops/src
+module github.com/gitmarut/kindops
 
 go 1.20
 
