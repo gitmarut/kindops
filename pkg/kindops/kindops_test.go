@@ -44,7 +44,7 @@ func TestCreate(t *testing.T) {
 
 		// check wordpress service responds on LB address
 		urladdress := "http://" + svcip + "/wp-admin/install.php"
-		err = sendHttpReq(urladdress, kindLogger)
+		err = SendHttpReq(urladdress, kindLogger)
 		check("Check traffic can be sent/received on a LB address in Kind cluster -", err, kindLogger)
 
 		// delete sample wordpress app
