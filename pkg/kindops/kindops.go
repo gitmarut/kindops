@@ -3,6 +3,7 @@ package kindops
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 
 	serialize "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
+	types "k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -462,6 +464,38 @@ func DeleteCluster(configfile string, logger log.Logger) error {
 
 	if err == nil {
 		logger.V(0).Infof("Cluster deleted - %q", c.Name)
+	}
+
+	return (err)
+
+}
+
+// Need to convert this as a generic function which can label / unlabel any object.
+
+func LabelNode(kubetclient *kubernetes.Clientset, nodeList []string, labelselector []string, logger log.Logger) error {
+
+	type patchSpec struct {
+		Op    string `json:"op"`
+		Path  string `json:"path"`
+		Value string `json:"value"`
+	}
+
+	patch1 := make([]patchSpec, 1)
+	patch1[0].Op = labelselector[0]
+	patch1[0].Path = labelselector[1]
+	patch1[0].Value = labelselector[2]
+
+	patchBytes, err := json.Marshal(patch1)
+
+	check("Convert labels patch data into Json -  ", err, logger)
+
+	for _, node := range nodeList {
+
+		_, err := kubetclient.CoreV1().Nodes().Patch(context.Background(), node, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
+
+		msg := "Able to patch labels for node " + node + " "
+		check(msg, err, logger)
+
 	}
 
 	return (err)

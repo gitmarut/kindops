@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	kindops "github.com/gitmarut/kindops/pkg/kindops"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kindCmd "sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/log"
 )
@@ -32,6 +34,20 @@ func main() {
 	// get wordpress service IP
 	svcip, err := kindops.GetSvcIp(tclient, wplabel, "wordpress", "default", kindLogger)
 	check("Getting Wordpress svcIP - ", err, kindLogger)
+
+	// remove metalLb exclude label for the nodes - https://github.com/gitmarut/kindops/issues/1
+	nodes, _ := tclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+
+	var nodesList []string
+	for _, node := range nodes.Items {
+		nodesList = append(nodesList, node.Name)
+	}
+
+	var labels []string
+	//labels = append(labels, "replace", "/metadata/labels/node.kubernetes.io~1exclude-from-external-load-balancers", "false")
+	labels = append(labels, "remove", "/metadata/labels/node.kubernetes.io~1exclude-from-external-load-balancers", "false")
+
+	kindops.LabelNode(tclient, nodesList, labels, kindLogger)
 
 	// check wordpress service responds on LB address
 	urladdress := "http://" + svcip + "/wp-admin/install.php"
