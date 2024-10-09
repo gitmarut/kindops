@@ -14,19 +14,28 @@ especially a VM running in your laptop
 Ubuntu 22.04.2 LTS in Windows Hypervisor runs Windows 11. VM is given 16GB mem 
 and 4 vCPUs.
 
-Ideally it should in any linux though I have not tested.
+Ideally it should be working in any linux though I have not tested.
 
 ### Golang
 
 go1.20.7 linux/amd64
+go1.23.2 linux/amd64
 
 ### Kind
 
 kind v0.20.0 go1.20.7 linux/amd64
+kind v0.24.0 go1.22.6 linux/amd64
+
 https://kind.sigs.k8s.io/docs/user/quick-start/
+
+### Kubernetes tried
+v1.27.2
+v1.30.2
 
 ## Running instructions
 
 Check the main file in this directory for how to use this.
 Configs used in config directory can be referred. Especially 
 "kind_test_cluster_config.yaml".
+
+"go run main.go"
